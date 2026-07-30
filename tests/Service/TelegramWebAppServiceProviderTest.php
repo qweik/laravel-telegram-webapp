@@ -139,6 +139,39 @@ class TelegramWebAppServiceProviderTest extends TestCase
         $this->assertNull( TelegramFacade::getWebAppUser() );
     }
 
+    /**
+     * auth_date is signed by Telegram, so dropping it marks the data as forged.
+     * It used to reach {@link Time::expired} as null and raise a TypeError.
+     */
+    #[Test]
+    #[DefineEnvironment( 'useTestTelegramBotToken' )]
+    public function testRequestDeclinedWithoutAuthDate()
+    {
+        $response = $this->post( '/api/telegram-webapp?user={"id":111111111,"first_name":"Evgen"}&hash=1e22c77f7ed7c91699d93eaf3925dc7e84a3ebb695642bb6a7664e34df63cc32' );
+        $this->assertEquals( config( 'telegram-webapp.error.status' ), $response->getStatusCode() );
+    }
+
+    #[Test]
+    #[DefineEnvironment( 'useTestTelegramBotToken' )]
+    public function testRequestDeclinedWithoutHash()
+    {
+        $response = $this->post( '/api/telegram-webapp?user={"id":111111111,"first_name":"Evgen"}&auth_date=1698814911' );
+        $this->assertEquals( config( 'telegram-webapp.error.status' ), $response->getStatusCode() );
+    }
+
+    /**
+     * A query string can carry arrays. Those used to reach the data-check-string
+     * builder, which types its callback arguments as string, and blew up with a
+     * TypeError before any signature was compared.
+     */
+    #[Test]
+    #[DefineEnvironment( 'useTestTelegramBotToken' )]
+    public function testRequestDeclinedWithArrayQueryParameter()
+    {
+        $response = $this->post( '/api/telegram-webapp?user[]=forged&auth_date=1698814911&hash=1e22c77f7ed7c91699d93eaf3925dc7e84a3ebb695642bb6a7664e34df63cc32' );
+        $this->assertEquals( config( 'telegram-webapp.error.status' ), $response->getStatusCode() );
+    }
+
     #[Test]
     #[DefineEnvironment( 'useCryptoServiceMock' )]
     #[DefineEnvironment( 'useTestTelegramBotToken' )]
@@ -203,8 +236,8 @@ class TelegramWebAppServiceProviderTest extends TestCase
     #[DefineEnvironment( 'useTestTelegramBotToken' )]
     public function testTelegramBotApiProxyWithNotExistingMethod()
     {
-        $mockApi = $this->createMock( StubBotApi::class );
-        $service = new TelegramWebAppService( $mockApi, new Crypto(), new Time() );
+        $stubApi = $this->createStub( StubBotApi::class );
+        $service = new TelegramWebAppService( $stubApi, new Crypto(), new Time() );
         $this->assertThrows(
             fn() => $service->notExists(),
             BadMethodCallException::class,

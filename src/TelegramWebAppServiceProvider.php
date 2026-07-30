@@ -4,8 +4,6 @@ namespace Micromagicman\TelegramWebApp;
 
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
-use Micromagicman\TelegramWebApp\Api\TelegramApi;
-use Micromagicman\TelegramWebApp\Api\TelegramBotApi;
 use Micromagicman\TelegramWebApp\Http\WebAppDataValidationMiddleware;
 use TelegramBot\Api\BotApi;
 
@@ -15,7 +13,7 @@ class TelegramWebAppServiceProvider extends ServiceProvider
     /**
      * Package singletons that should be registered.
      *
-     * @var array
+     * @var array<class-string, class-string|callable>
      */
     public $singletons = [];
 
@@ -36,13 +34,5 @@ class TelegramWebAppServiceProvider extends ServiceProvider
         $this->app->singleton( BotApi::class, function () {
             return new BotApi( telegramToken() );
         } );
-    }
-
-    /**
-     *
-     */
-    private function serviceEnabled(): bool
-    {
-        return webAppConfig( 'enabled' );
     }
 }

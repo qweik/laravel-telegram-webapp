@@ -20,38 +20,47 @@ class TelegramUser
     private string $first_name;
 
     /**
-     * Last name of the user.
+     * Last name of the user. Optional in the Telegram payload.
      * @var string
      */
-    private string $last_name;
+    private string $last_name = '';
 
     /**
-     * Username of the user.
+     * Username of the user. Optional in the Telegram payload.
      * @var string
      */
-    private string $username;
+    private string $username = '';
 
     /**
-     * Telegram user's current language as 2-char code
+     * Telegram user's current language as 2-char code. Optional in the Telegram payload.
      * @var string
      */
-    private string $language_code;
+    private string $language_code = '';
 
     /**
-     * true, if this user is a Telegram Premium user
+     * true, if this user is a Telegram Premium user. Absent for non-premium users.
      */
-    private bool $is_premium;
+    private bool $is_premium = false;
 
     /**
-     * true, if this user allowed the bot to message them
+     * true, if this user allowed the bot to message them. Optional in the Telegram payload.
      * @var bool
      */
-    private bool $allows_write_to_pm;
+    private bool $allows_write_to_pm = false;
 
+    /**
+     * Only fields declared above are taken. Telegram keeps adding keys to the user
+     * object (photo_url, added_to_attachment_menu, ...), and assigning those blindly
+     * created dynamic properties, deprecated since PHP 8.2 and an error in PHP 9.
+     *
+     * @param array<string, mixed> $telegramUserData
+     */
     public function __construct( array $telegramUserData )
     {
         foreach ( $telegramUserData as $key => $value ) {
-            $this->{$key} = $value;
+            if ( property_exists( $this, $key ) ) {
+                $this->{$key} = $value;
+            }
         }
     }
 

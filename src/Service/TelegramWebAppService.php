@@ -5,6 +5,7 @@ namespace Micromagicman\TelegramWebApp\Service;
 use BadMethodCallException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Request as RequestFacade;
 use Micromagicman\TelegramWebApp\Dto\TelegramUser;
 use Micromagicman\TelegramWebApp\Util\Crypto;
 use Micromagicman\TelegramWebApp\Util\Time;
@@ -63,13 +64,13 @@ class TelegramWebAppService
         if ( !webAppConfig( 'enabled' ) ) {
             return true;
         }
-        $queryParams = $request->query();
+        $queryParams = $this->queryParams( $request );
         if ( !$this->telegramInitDataValid( $queryParams ) ) {
             return false;
         }
-        $requestHash = $queryParams[ self::HASH_QUERY_PARAMETER_KEY ];
+        $requestHash = (string) $queryParams[ self::HASH_QUERY_PARAMETER_KEY ];
         $hashFromQueryString = $this->createHashFromQueryString( $queryParams );
-        return $requestHash === $hashFromQueryString;
+        return hash_equals( $hashFromQueryString, $requestHash );
     }
 
     /**
@@ -77,16 +78,28 @@ class TelegramWebAppService
      */
     public function getWebAppUser( ?Request $request = null ): ?TelegramUser
     {
-        $requestQuery = !$request ? \Illuminate\Support\Facades\Request::query() : $request->query();
+        $requestQuery = $this->queryParams( $request );
         if ( !array_key_exists( self::USER_QUERY_PARAMETER_KEY, $requestQuery ) ) {
             return null;
         }
-        $telegramUserData = json_decode( $requestQuery[ self::USER_QUERY_PARAMETER_KEY ], JSON_OBJECT_AS_ARRAY );
-        if ( JSON_ERROR_NONE !== json_last_error() ) {
+        $telegramUserData = json_decode( $requestQuery[ self::USER_QUERY_PARAMETER_KEY ], true );
+        if ( JSON_ERROR_NONE !== json_last_error() || !is_array( $telegramUserData ) ) {
             Log::error( "Error parsing Telegram WebApp user data from json", [ $requestQuery ] );
             return null;
         }
         return new TelegramUser( $telegramUserData );
+    }
+
+    /**
+     * Query parameters of the given request, falling back to the current one.
+     *
+     * @return array<string, mixed>
+     */
+    private function queryParams( ?Request $request ): array
+    {
+        return $request instanceof Request
+            ? $request->query()
+            : RequestFacade::query();
     }
 
     /**
@@ -130,8 +143,21 @@ class TelegramWebAppService
      */
     private function telegramInitDataValid( array $telegramInitData ): bool
     {
-        return array_key_exists( self::USER_QUERY_PARAMETER_KEY, $telegramInitData )
-            && !$this->authDateExpired( $telegramInitData[ self::AUTH_DATE_QUERY_PARAMETER_KEY ] );
+        // user, auth_date and hash are all part of what Telegram signs, so genuine
+        // data always carries them, and every value in that query string is a scalar.
+        // Checking it here turns a request that drops a key or smuggles in an array
+        // (?user[]=x) into the configured error response rather than a TypeError.
+        foreach ( [ self::USER_QUERY_PARAMETER_KEY, self::AUTH_DATE_QUERY_PARAMETER_KEY, self::HASH_QUERY_PARAMETER_KEY ] as $requiredKey ) {
+            if ( !array_key_exists( $requiredKey, $telegramInitData ) ) {
+                return false;
+            }
+        }
+        foreach ( $telegramInitData as $value ) {
+            if ( !is_scalar( $value ) ) {
+                return false;
+            }
+        }
+        return !$this->authDateExpired( (int) $telegramInitData[ self::AUTH_DATE_QUERY_PARAMETER_KEY ] );
     }
 
     /**
